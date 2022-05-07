@@ -15,57 +15,51 @@ using namespace std;
 
 StreamReassembler::StreamReassembler(const size_t capacity) : 
                                     unassembled_bytes_(0),
-                                    next_index_(0),
+                                    eof_index_(0),
                                     eof_end_(false),
-                                    eof_index(0),
                                     buffer_(capacity, '\0'),
                                     bitmap_((capacity + sizeof(bits_t) * 8 - 1) / (sizeof(bits_t) * 8), 0),
                                     output_(capacity), 
                                     capacity_(capacity) {}
 
 void StreamReassembler::push_substring(const string &data, const size_t index, const bool eof) {
-    
-    next_index_ = output_.bytes_written();
-    size_t unacceptable_index = next_index_ + output_.remaining_capacity(); // 可以写入到output_中的数据
-    //size_t unreadable_index = output_.bytes_written();
-
-    size_t end_index = index + data.size();             // 
-
-    if(index >= unacceptable_index || end_index < next_index_ ) return;
-
+    size_t unassembled_index = output_.bytes_written();        // 没有写入到output_的数据
+    // size_t unacceptable_index = unassembled_index + capacity_;
+    size_t unacceptable_index = unassembled_index + output_.remaining_capacity(); // 可以写入到buffer_中的数据
+             
+    size_t start_index = max(unassembled_index, index);
+    size_t end_index = min(unacceptable_index, index + data.size());
     const uint8_t B = sizeof(bits_t) * 8;
 
-
-    size_t i = max(next_index_, index);
-
-    for(; i < min(end_index, unacceptable_index); i++) {
-        if(!(bitmap_[(i % capacity_) / B] & (1 << ((i % capacity_) % B)))) {
-            
+    // 整合数据
+    for(size_t i = start_index; i < end_index; i++) {
+        if(!(bitmap_[(i % capacity_) / B] & (1 << ((i % capacity_) % B)))) { 
             buffer_[i % capacity_] = data[i - index];
             bitmap_[(i % capacity_) / B] |= static_cast<bits_t>(1 << ((i % capacity_) % B));
             unassembled_bytes_++;
-        } 
+        }
     }
 
-    size_t start_index = next_index_;
-
-
-    while ((bitmap_[(next_index_ % capacity_) / B] & (1 << ((next_index_ % capacity_) % B)))) {
-        bitmap_[(next_index_ % capacity_) / B] &= ~static_cast<bits_t>(1 << ((next_index_ % capacity_) % B));
-        next_index_++;
+    // 将要写入output_的数据的bitmap置0;
+    size_t unwriteable_index = unassembled_index;
+    while ((bitmap_[(unwriteable_index % capacity_) / B] & (1 << ((unwriteable_index % capacity_) % B)))) {
+        // if(unwriteable_index - unassembled_index >= output_.remaining_capacity()) break;
+        bitmap_[(unwriteable_index % capacity_) / B] &= ~static_cast<bits_t>(1 << ((unwriteable_index % capacity_) % B));
+        unwriteable_index++;
     }
 
     string res = "";
-    for(size_t j = start_index; j < next_index_; j++) res += buffer_[j % capacity_];
-    size_t len = output_.write(res);
-    unassembled_bytes_ -= len;
+    for(size_t j = unassembled_index; j < unwriteable_index; j++) res += buffer_[j % capacity_];
+    // (unw - una) 一定小于等于 output_.remaining_capacity() 所以可以全部写入
+    output_.write(res);
+    unassembled_bytes_ -= (unwriteable_index - unassembled_index);
 
     if (eof) {
-        eof_end_ = true;     // 设置eof标志
-        eof_index = index + data.size();
+        eof_end_ = true;    
+        eof_index_ = index + data.size();
     }
     
-    if (eof_end_ && output_.bytes_written() == eof_index) {    // 如果输入结束且所有数据都发送了，则结束字节流
+    if (eof_end_ && eof_index_ <= output_.bytes_written()) {    // 如果输入结束且所有数据都发送了，则结束字节流
        output_.end_input();
     }
 }

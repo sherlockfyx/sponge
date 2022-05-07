@@ -5,9 +5,7 @@
 
 #include <cstdint>
 #include <string>
-#include <vector>
-#include <unordered_set>
-#include <map>
+
 
 //! \brief A class that assembles a series of excerpts from a byte stream (possibly out of order,
 //! possibly overlapping) into an in-order byte stream.
@@ -15,13 +13,12 @@
 class StreamReassembler {
   private:
     // Your code here -- add private members as necessary.
-
     size_t unassembled_bytes_;    // 已接收但未发送至_output的数据大小
-    size_t next_index_;
+    size_t eof_index_; 
     bool eof_end_;                // 是否结束
-    size_t eof_index;
+
     std::string buffer_;          // 缓存
-    std::vector<uint8_t> bitmap_;// 标记是否写入
+    std::vector<uint8_t> bitmap_; // 标记是否写入
 
     ByteStream output_;  //!< The reassembled in-order byte stream
     size_t capacity_;    //!< The maximum number of bytes
